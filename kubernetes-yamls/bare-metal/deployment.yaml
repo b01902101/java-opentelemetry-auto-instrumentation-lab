@@ -1,0 +1,133 @@
+# deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spring-boot-monitoring-lab
+  labels:
+    app: spring-boot-monitoring-lab
+  namespace: monitoring-labs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spring-boot-monitoring-lab
+  template:
+    metadata:
+      annotations:
+        instrumentation.opentelemetry.io/inject-java: "true"
+      labels:
+        app: spring-boot-monitoring-lab
+    spec:
+      imagePullSecrets:
+        - name: registry-credentials
+      containers:
+        - name: spring-boot-monitoring-lab
+          image: kubemaster-01.smkz.net:31056/spring-boot-monitoring-lab:v18
+          env:
+            - name: DATABASE_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: sb-configs
+                  key: database.host
+            - name: DATABASE_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: sb-configs
+                  key: database.port
+            - name: DATABASE_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: sb-configs
+                  key: database.name
+            - name: SCHEMA_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: sb-configs
+                  key: database.schema
+            - name: DATABASE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: sb-secrets
+                  key: database.username
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sb-secrets
+                  key: database.password
+            - name: SWAGGER_UI_PATH
+              valueFrom:
+                configMapKeyRef:
+                  name: sb-configs
+                  key: swagger.ui.path
+            - name: SWAGGER_API_PATH
+              valueFrom:
+                configMapKeyRef:
+                  name: sb-configs
+                  key: swagger.api.path
+          resources:
+            requests:
+              memory: 1024Mi
+              cpu: 500m
+            limits:
+              memory: 1024Mi
+              cpu: 500m
+          ports:
+            - containerPort: 8080
+              protocol: TCP
+
+---
+# service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: spring-boot-monitoring-lab
+  namespace: monitoring-labs
+spec:
+  type: ClusterIP
+  selector:
+    app: spring-boot-monitoring-lab
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+
+---
+# ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: spring-boot-monitoring-lab-ingress
+  namespace: monitoring-labs
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+    nginx.ingress.kubernetes.io/x-forwarded-prefix: "/web/sbmonitor"
+    nginx.ingress.kubernetes.io/body-size: "102400m"
+    nginx.ingress.kubernetes.io/proxy-body-size: "102400m"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "7200"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "7200"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "7200"
+    nginx.ingress.kubernetes.io/proxy-max-temp-file-size: "0"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy_max_temp_file_size: "102400m"
+    nginx.ingress.kubernetes.io/large-client-header-buffers: "8 52m"
+    nginx.ingress.kubernetes.io/client-header-buffer-size: "52m"
+    nginx.ingress.kubernetes.io/client-body-buffer-size: "102400m"
+    nginx.ingress.kubernetes.io/client-max-body-size: "102400m"
+    nginx.ingress.kubernetes.io/client_body_timeout: "7200"
+    nginx.org/client-max-body-size: "102400m"
+    nginx.org/proxy-read-timeout: "7200"
+    nginx.org/websocket-services: core-service
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /web/sbmonitor/(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: spring-boot-monitoring-lab
+                port:
+                  number: 80

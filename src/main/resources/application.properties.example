@@ -1,0 +1,29 @@
+server.tomcat.accesslog.enabled=true
+server.tomcat.accesslog.enabled=true
+server.tomcat.accesslog.directory=/dev
+server.tomcat.accesslog.prefix=stdout
+server.tomcat.accesslog.buffered=false
+server.tomcat.accesslog.suffix=
+server.tomcat.accesslog.file-date-format=
+# Rename this file to `application.properties` first.
+# Replace `DATABASE_URL`, `DATABASE_PORT` and `DATABASE_NAME` with the correct values.
+# spring.datasource.url=jdbc:mariadb://127.0.0.1:3306/springboot_practice?serverTimezone=UTC&useSSL=fals
+spring.datasource.url=jdbc:postgresql://${DATABASE_HOST}:${DATABASE_PORT}/${DATABASE_NAME}?currentSchema=${SCHEMA_NAME}
+# Replace `DATABASE_USERNAME` with correct username.
+spring.datasource.username=${DATABASE_USERNAME}
+# Replace `DATABASE_PASSWORD` with correct password.
+spring.datasource.password=${DATABASE_PASSWORD}
+# spring.datasource.driver-class-name=org.mariadb.jdbc.Driver
+spring.datasource.driver-class-name=org.postgresql.Driver
+# Show or not log for each sql query
+spring.jpa.show-sql=true
+# Hibernate ddl auto (create, create-drop, update): with "create-drop" the database
+# schema will be automatically created afresh for every start of application
+# spring.jpa.hibernate.ddl-auto=create
+# Allows Hibernate to generate SQL optimized for a particular DBMS
+# spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MariaDBDialect
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+# swagger-ui custom path
+springdoc.swagger-ui.path=${SWAGGER_UI_PATH}
+# /api-docs endpoint custom path
+springdoc.api-docs.path=${SWAGGER_API_PATH}

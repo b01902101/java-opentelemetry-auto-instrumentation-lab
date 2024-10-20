@@ -1,0 +1,3 @@
+kubernetes-yamls/*
+target/*
+application.properties

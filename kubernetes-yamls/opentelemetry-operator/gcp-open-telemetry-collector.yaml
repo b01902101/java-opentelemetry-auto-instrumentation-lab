@@ -1,0 +1,42 @@
+apiVersion: opentelemetry.io/v1alpha1
+kind: OpenTelemetryCollector
+metadata:
+  name: gcp
+  namespace: otel-system
+spec:
+  mode: "deployment"
+  config: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+          http:
+
+    exporters:
+      googlecloud:
+
+    processors:
+
+      batch:
+        # batch metrics before sending to reduce API usage
+        send_batch_max_size: 200
+        send_batch_size: 200
+        timeout: 5s
+
+      memory_limiter:
+        # drop metrics if memory usage gets too high
+        check_interval: 1s
+        limit_percentage: 65
+        spike_limit_percentage: 20
+
+      resourcedetection:
+        # detect cluster name and location
+        detectors: [gcp]
+        timeout: 10s
+
+    service:
+      pipelines:
+        metrics:
+          receivers: [otlp]
+          processors: [batch, memory_limiter, resourcedetection]
+          exporters: [googlecloud]
