@@ -12,7 +12,7 @@
 ## TODO List
 
 - [x] 撰寫 GCP 實作文件
-- [ ] Cloud SQL Auth Proxy 改用 Workload Identity 驗證
+- [x] Cloud SQL Auth Proxy 改用 Workload Identity 驗證
 - [ ] 撰寫地端 Kubernetes 實作文件
 
 ## Table of Contents
@@ -145,14 +145,9 @@
       - 區域: `asia-east1 (台灣)`
       - Cloud Router: 點選「建立 Cloud Router」，填入名稱 `nat-router` 後其餘留預設值即可
 
+      ![Cloud NAT 設定](./documents/assets/04-cloud-nat-setting.png)
+
     點選建立即可
-
-4. 服務帳號與 IAM 角色
-    須建立一支讓 Cloud SQL Auth Proxy 可以進行認證的服務帳號，並指定角色給他
-
-    - 建立服務帳號
-      > 此名稱可以更換為任意名稱，但請記得此名稱，後續取得金鑰檔案指令中會用到，範例所使用的服務帳號名稱為 `sb-opentelemetry-lab`
-    - 指定 **Cloud SQL 編輯者**角色給此服務帳號
 
 ### 部署 cert-manager
 
@@ -312,9 +307,12 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
     - 使用 Docker 指令
 
       ```bash
+      # Export variables for command
       IMAGE_REGISTRY_DOMAIN=YOUR_REGISTRY_DOMAIN
       IMAGE_NAME=YOUR_IMAGE_NAME
       IMAGE_VERSION=IMAGE_VERSION
+
+      # Issue command
       # If you are not using Docker Hub as your image registry
       # You need to use the second command if your registry is not Docker Hub
       docker login
@@ -328,9 +326,12 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
     - 使用 Podman 指令
 
       ```bash
+      # Export variables for command
       IMAGE_REGISTRY_DOMAIN=YOUR_REGISTRY_DOMAIN
       IMAGE_NAME=YOUR_IMAGE_NAME
       IMAGE_VERSION=IMAGE_VERSION
+
+      # Issue command
       # If you are not using Docker Hub as your image registry
       # You need to use the second command if your registry is not Docker Hub
       podman login
@@ -343,9 +344,10 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 
 3. 修改部署檔
 
-    - 修改 `./kubernetes-yaml/gke/namespace.yaml` 內容，本 Lab 所使用的命名空間為 `monitoring-labs`
-    - 修改 `./kubernetes-yaml/gke/config-map-and-secret.yaml` 內容，將命名空間、資料庫連接埠、名稱、帳號、密碼寫上去
-    - 修改 `./kubernetes-yaml/gke/deployment.yaml`，將命名空間、映像檔名稱改對，並針對建出來的 Pod 加上 `instrumentation.opentelemetry.io/inject-java: "true"` 的 Annotation，如下所示
+    - 修改 `./kubernetes-yamls/gke/spring-lab-application-ksa.yaml` 內容，將 Service Account 資訊修改為正確的資訊。
+    - 修改 `./kubernetes-yamls/gke/namespace.yaml` 內容，本 Lab 所使用的命名空間為 `monitoring-labs`
+    - 修改 `./kubernetes-yamls/gke/config-map-and-secret.yaml` 內容，將命名空間、資料庫連接埠、名稱、帳號、密碼寫上去
+    - 修改 `./kubernetes-yamls/gke/deployment.yaml`，將命名空間、映像檔名稱改對，並針對建出來的 Pod 加上 `instrumentation.opentelemetry.io/inject-java: "true"` 的 Annotation，如下所示
 
     ```yaml
     # deployment.yaml
@@ -371,7 +373,35 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
         kubectl apply -f ./kubernetes-yamls/gke/config-map-and-secrets.yaml
         ```
 
-    3. 透過以下指令將應用程式與 Service 部署到 GKE 上
+    3. 服務帳號與 IAM 角色
+
+        須建立一支讓 Cloud SQL Auth Proxy 可以進行認證的服務帳號，並指定角色給他
+
+        - 建立服務帳號
+          > 此名稱可以更換為任意名稱，但請記得此名稱，後續取得金鑰檔案指令中會用到，範例所使用的服務帳號名稱為 `spring-lab-application-gsa`
+        - 指定以下角色給此服務帳號
+          - Cloud SQL 編輯者
+          - Workload Identity 使用者
+
+    4. 透過以下指令先將 Cloud SQL Auth Proxy 需要的 IAM 權限透過 Workload Identity 綁定到 Kubernetes Service Account 上
+
+        > 此指令執行過程中若出現問題，建議可以在最後加上 `--verbosity=debug` 檢視除厝的日誌
+
+        ```bash
+        # Export variables for command
+        PROJECT_ID=your_project_id
+        K8S_NAMESPACE_NAME=service_namespace_name
+        K8S_SERVICE_ACCOUNT_NAME=k8s_sa_name
+        GCP_SERVICE_ACCOUNT_NAME=gcp_sa_name
+
+        # Issue command
+        gcloud iam service-accounts add-iam-policy-binding \
+          --role roles/iam.workloadIdentityUser \
+          --member "serviceAccount:$PROJECT_ID.svc.id.goog[$K8S_NAMESPACE_NAME/$K8S_SERVICE_ACCOUNT_NAME]" \
+          $GCP_SERVICE_ACCOUNT_NAME@$PROJECT_ID.iam.gserviceaccount.com
+        ```
+
+    5. 透過以下指令將應用程式與 Service 部署到 GKE 上
 
         ```bash
         kubectl apply -f ./kubernetes-yamls/gke/deployment.yaml
@@ -396,6 +426,12 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
   打開 GCM，透過**指標管理**頁面左下角的 `Workload` 分類檢查是否有收到 JVM 相關的指標，如下圖所示:
 
   ![指標輸出範例](./documents/assets/01-example-for-metrics.png)
+
+  也可以從 GCM 的 Metrics Explorer 中透過以下方式查到相關指標
+
+  ![指標輸出範例-2](./documents/assets/02-example-for-metrics-2.png)
+
+  ![指標輸出範例-3](./documents/assets/03-example-for-metrics-3.png)
 
 以上步驟如果都成功，表示整個部署是成功的。
 
@@ -465,6 +501,9 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 - [從 Google Kubernetes Engine 連線到 Cloud SQL - Google Cloud SQL 文件](https://cloud.google.com/sql/docs/mysql/connect-kubernetes-engine?hl=zh-cn)
 - [使用 Cloud SQL Auth 代理連線 - Google Cloud SQL 文件](https://cloud.google.com/sql/docs/mysql/connect-auth-proxy?hl=zh-cn#private-ip)
 - [使用最小權限 IAM 服務帳號 - 強化叢集的安全性 - Google Kubernetes Engine (GKE) 文件](https://cloud.google.com/kubernetes-engine/docs/how-to/hardening-your-cluster?hl=zh-cn#use_least_privilege_sa)
+- [--verbosity - gcloud - Cloud SDK 文件](https://cloud.google.com/sdk/gcloud/reference#--verbosity)
+- [Issue #1853 Connecting to cloud sql instance using workload identity federation credential config file - GoogleCloudPlatform/cloud-sql-proxy - GitHub](https://github.com/GoogleCloudPlatform/cloud-sql-proxy/issues/1853)
+- [Issue #66020 Container-level usage of field "serviceAccountName" - kubernetes/kubernetes - GitHub](https://github.com/kubernetes/kubernetes/issues/66020)
 
 ### 其它方案
 

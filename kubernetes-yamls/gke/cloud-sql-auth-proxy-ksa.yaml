@@ -1,6 +1,0 @@
-# cloud-sql-auth-proxy-ksa.yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: sb-opentelemetry-lab-cloud-sql-proxy-ksa
-  namespace: monitoring-labs

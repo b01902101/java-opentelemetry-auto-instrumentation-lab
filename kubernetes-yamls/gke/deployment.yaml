@@ -20,10 +20,11 @@ spec:
       labels:
         app: spring-boot-monitoring-lab
     spec:
-      volumes:
-        - name: service-account-secret
-          secret:
-            secretName: gsa-secret
+      serviceAccountName: spring-lab-application-ksa
+      # volumes:
+      #   - name: service-account-secret
+      #     secret:
+      #       secretName: gsa-secret
       containers:
         - name: spring-boot-monitoring-lab
           image: samuikazeforwork/spring-boot-monitoring-lab:v18
@@ -85,7 +86,7 @@ spec:
           args:
             # 指定資料庫的連線名稱，可以在 Cloud SQL 執行個體資訊頁面中查到
             - lab-project-438121:asia-east1:sb-monitoring-lab
-            - --credentials-file=/secrets/service_account.json
+            # - --credentials-file=/secrets/service_account.json
             - --private-ip
             - --debug
             - --debug-logs
@@ -102,10 +103,10 @@ spec:
             requests:
               cpu: 100m
               memory: 128Mi
-          volumeMounts:
-            - name: service-account-secret
-              mountPath: /secrets/
-              readOnly: true
+          # volumeMounts:
+          #   - name: service-account-secret
+          #     mountPath: /secrets/
+          #     readOnly: true
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
