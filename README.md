@@ -5,6 +5,11 @@
 
 本專案旨在研究如何在 Kubernetes 中透過部署 OpenTelemetry Operator 的方式，在 Spring Boot 沒有輸出任何可觀測性資料的情況下，透過 Auto Instrumentation 主動取得 JVM 相關的可觀測性資料。
 
+針對可觀測性的基本知識以及 OpenTelemetry 簡介，可以參閱 `docs` 資料夾下的文件，落點選下方連結:
+
+- [可觀測性簡介](./docs/01-monitoring-basics.md)
+- OpenTelemetry 簡介 (待補上)
+
 本 Lab 含有地端自架 Kubernetes 與 GKE 兩種部署方式。
 
 > 本專案是由 [samuikaze/spring-boot-practice](https://github.com/samuikaze/spring-boot-practice) 修改而來，GCP 部份則是使用自己的個人帳號進行研究與實作。
@@ -13,6 +18,7 @@
 
 - [x] 撰寫 GCP 實作文件
 - [x] Cloud SQL Auth Proxy 改用 Workload Identity 驗證
+- [ ] 撰寫簡介文件
 - [ ] 撰寫地端 Kubernetes 實作文件
 
 ## Table of Contents
@@ -50,108 +56,121 @@
 
 1. Cloud SQL
 
-    - 在專案中啟用 Cloud SQL API
-    - 依據以下規格建立 Cloud SQL 執行個體
+    <details>
+      <summary>按我展開設定詳細內容</summary>
 
-      |項目名稱|規格|
-      |---|---|
-      |資料庫引擎|PostgreSQL|
-      |Cloud SQL 版本|Enterprise / 沙箱環境|
-      |資料庫引擎版本|PostgreSQL 14|
-      |執行個體名稱|`spring-boot-open-telemetry-lab`|
-      |postgres 帳號的密碼|`spring-boot-open-telemetry-lab-postgres`|
-      |地區|單一可用區 / `asia-east1` (台灣)|
-      |機器設定|共用核心 / 1 vCPU，0.614 GB|
-      |儲存空間|HDD / 10GB / 不啟用自動增加儲存空間|
-      |連線|私人 IP / default|
-      |資料保護|全部不勾選|
-      |維護|不限 / 任何期間|
+      - 在專案中啟用 Cloud SQL API
+      - 依據以下規格建立 Cloud SQL 執行個體
 
-    - 待其建立完成即可
+        |項目名稱|規格|
+        |---|---|
+        |資料庫引擎|PostgreSQL|
+        |Cloud SQL 版本|Enterprise / 沙箱環境|
+        |資料庫引擎版本|PostgreSQL 14|
+        |執行個體名稱|`spring-boot-open-telemetry-lab`|
+        |postgres 帳號的密碼|`spring-boot-open-telemetry-lab-postgres`|
+        |地區|單一可用區 / `asia-east1` (台灣)|
+        |機器設定|共用核心 / 1 vCPU，0.614 GB|
+        |儲存空間|HDD / 10GB / 不啟用自動增加儲存空間|
+        |連線|私人 IP / default|
+        |資料保護|全部不勾選|
+        |維護|不限 / 任何期間|
+
+      - 待其建立完成即可
+    </details>
 
 2. Google Kubernetes Engine
 
-    本 Lab 是透過 Sidecar 方式將應用程式與資料庫間的連線建立起來，因此需要透過 Google Kubernetes Engine 模擬情境
+    <details>
+      <summary>按我展開設定詳細內容</summary>
+      <br />
+      本 Lab 是透過 Sidecar 方式將應用程式與資料庫間的連線建立起來，因此需要透過 Google Kubernetes Engine 模擬情境
 
-    - 啟用 Google Kubernetes Engine API
-    - 建立叢集，並從畫面右上角選擇建立 Standard 的叢集
-    - 依據以下規格建立叢集
-      - 基本資訊
-
-        |項目名稱|規格|
-        |---|---|
-        |名稱|`sb-opentelemetry-labs`|
-        |位置|區域性 / `asia-east1-a`|
-        |發佈版本|穩定|
-
-      - 機群註冊
-
-        不勾選
-
-      - 節點集區
-
-        |項目名稱|規格|
-        |---|---|
-        |集區名稱|`default-pool`|
-        |節點數量|1|
-
-        - 節點數
+      - 啟用 Google Kubernetes Engine API
+      - 建立叢集，並從畫面右上角選擇建立 Standard 的叢集
+      - 依據以下規格建立叢集
+        - 基本資訊
 
           |項目名稱|規格|
           |---|---|
-          |映像檔類型|採用 containerd 的 Container-Optimized OS (cos_containerd) (預設)|
-          |機器設定|一般設定 / E2|
-          |機器類型|預設 / e2-medium|
+          |名稱|`sb-opentelemetry-labs`|
+          |位置|區域性 / `asia-east1-a`|
+          |發佈版本|穩定|
 
-        - 節點安全性
+        - 機群註冊
 
-          > 依據 [Google 文件](https://cloud.google.com/kubernetes-engine/docs/how-to/hardening-your-cluster?hl=zh-cn#use_least_privilege_sa)的說明，由於 GCE 預設帳戶給予的權限過大，因此較建議自行先建立服務帳號後，再指定必要角色給這個服務帳戶
+          不勾選
 
-          > 由於這邊是 Lab 性質專案，因此服務帳戶會直接使用 GCE 預設帳戶
+        - 節點集區
 
           |項目名稱|規格|
           |---|---|
-          |服務帳戶|GCE 預設帳戶|
-          |存取權範圍|提供所有 Cloud API 的完整存取權|
-          |受防護的選項|勾選啟用完整性監控 / 勾選啟用安全啟動功能 / 不勾選啟用機密 GKE 節點|
+          |集區名稱|`default-pool`|
+          |節點數量|1|
 
-      - 網路連線
+          - 節點數
 
-        |項目名稱|規格|
-        |---|---|
-        |網路|default / default (10.140.0.0/20)|
-        |網路存取權|私人叢集 / 勾選 Access control plane using its external IP address|
+            |項目名稱|規格|
+            |---|---|
+            |映像檔類型|採用 containerd 的 Container-Optimized OS (cos_containerd) (預設)|
+            |機器設定|一般設定 / E2|
+            |機器類型|預設 / e2-medium|
 
-      - 安全性
+          - 節點安全性
 
-        將以下項目勾選起來
+            > 依據 [Google 文件](https://cloud.google.com/kubernetes-engine/docs/how-to/hardening-your-cluster?hl=zh-cn#use_least_privilege_sa)的說明，由於 GCE 預設帳戶給予的權限過大，因此較建議自行先建立服務帳號後，再指定必要角色給這個服務帳戶
 
-        - 啟用受防護的 GKE 節點
-        - 啟用 Workload Identity
-        - 安全防護機制 (基本)
-        - 工作負載安全漏洞掃描 (基本)
+            > 由於這邊是 Lab 性質專案，因此服務帳戶會直接使用 GCE 預設帳戶
 
-      - 功能
+            |項目名稱|規格|
+            |---|---|
+            |服務帳戶|GCE 預設帳戶|
+            |存取權範圍|提供所有 Cloud API 的完整存取權|
+            |受防護的選項|勾選啟用完整性監控 / 勾選啟用安全啟動功能 / 不勾選啟用機密 GKE 節點|
 
-        - 將「啟用 Managed Service for Prometheus」勾選拿掉
+        - 網路連線
+
+          |項目名稱|規格|
+          |---|---|
+          |網路|default / default (10.140.0.0/20)|
+          |網路存取權|私人叢集 / 勾選 Access control plane using its external IP address|
+
+        - 安全性
+
+          將以下項目勾選起來
+
+          - 啟用受防護的 GKE 節點
+          - 啟用 Workload Identity
+          - 安全防護機制 (基本)
+          - 工作負載安全漏洞掃描 (基本)
+
+        - 功能
+
+          - 將「啟用 Managed Service for Prometheus」勾選拿掉
+    </details>
+
 3. Cloud NAT
 
-    由於 GKE 是私人叢集，因此須建立 Cloud NAT 轉發流量，否則會導致 Kubernetes 無法拉取外部映像檔儲存庫中的映像檔
+    <details>
+      <summary>按我展開設定詳細內容</summary>
+      <br />
+      由於 GKE 是私人叢集，因此須建立 Cloud NAT 轉發流量，否則會導致 Kubernetes 無法拉取外部映像檔儲存庫中的映像檔
 
-    - 閘道名稱: `nat-config`
-    - 網路位址轉譯 (NAT) 類型: 公開
-    - Cloud Router
-      - 網路: `default`
-      - 區域: `asia-east1 (台灣)`
-      - Cloud Router: 點選「建立 Cloud Router」，填入名稱 `nat-router` 後其餘留預設值即可
+      - 閘道名稱: `nat-config`
+      - 網路位址轉譯 (NAT) 類型: 公開
+      - Cloud Router
+        - 網路: `default`
+        - 區域: `asia-east1 (台灣)`
+        - Cloud Router: 點選「建立 Cloud Router」，填入名稱 `nat-router` 後其餘留預設值即可
 
-      ![Cloud NAT 設定](./documents/assets/04-cloud-nat-setting.png)
+        ![Cloud NAT 設定](./docs/assets/readme/04-cloud-nat-setting.png)
 
-    點選建立即可
+      點選建立即可
+    </details>
 
 ### 部署 cert-manager
 
-OpenTelemetry Operator 因為會透過 Webhook 與 API 伺服器進行溝通，因此必須 TLS 憑證供其使用，官方目前推薦的方式為安裝 cert-manager，若不想安裝 cert-manager，則必須自行提供憑證或透過其他方式達到目的。
+由於 OpenTelemetry Operator 會透過 Webhook 與 API 伺服器進行溝通，因此必須提供 TLS 憑證供其驗證使用，官方目前推薦的方式為安裝 cert-manager，若無法安裝 cert-manager，則必須自行提供憑證或透過其它方式達到目的。
 
 本 Lab 是會以安裝 cert-manager 為主，透過以下指令安裝 cert-manager:
 
@@ -176,11 +195,11 @@ OpenTelemetry Operator 因為會透過 Webhook 與 API 伺服器進行溝通，�
 
 ### 部署 OpenTelemetry Operator
 
-這邊請注意，雖然 GCP 有提供 OpenTelemetry 的解決方案，但其未包含 Instrumentation 相關的 CRDs，因此必須自行部署 OpenTelemetry Operator。
+這邊請注意，雖然 GCP 有提供 OpenTelemetry 的解決方案，但其未包含 Instrumentation 相關的 CRDs，因此建議透過部署 OpenTelemetry Operator 方式達到目的。
 
 透過以下步驟部署 OpenTelemetry Operator:
 
-> `manager.collectorImage.repository` 這項參數請務必指定為 `otel/opentelemetry-collector-contrib`，因為 `otel/opentelemetry-collector-k8s` 目前尚未支援 Google Cloud 的可觀測性資料輸出
+> `manager.collectorImage.repository` 請指定為 `otel/opentelemetry-collector-contrib` 映像，因為 `otel/opentelemetry-collector-k8s` 目前尚未支援 Google Cloud 的可觀測性資料輸出
 
 > 這邊會將 OpenTelemetry Operator 部署在 `otel-system` 命名空間中，這個值可以自行修改，但後續有命名空間名稱為 `otel-system` 者，也要跟著修改。
 
@@ -215,7 +234,7 @@ OpenTelemetry Operator 因為會透過 Webhook 與 API 伺服器進行溝通，�
 
 ### 設定 Auto Instrumentation
 
-本 Lab 的測試應用程式為 Spring Boot 撰寫而成，因此我們須將 Java 的 Instrumentation 透過以下指令部到 GKE 上
+本 Lab 的測試應用程式是使用 Spring Boot 撰寫而成，因此我們須透過以下指令設定 Java 的 Instrumentation
 
 ```bash
 kubectl apply -f ./kubernetes-yamls/gke/instrumentation.yaml
@@ -385,7 +404,7 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 
     4. 透過以下指令先將 Cloud SQL Auth Proxy 需要的 IAM 權限透過 Workload Identity 綁定到 Kubernetes Service Account 上
 
-        > 此指令執行過程中若出現問題，建議可以在最後加上 `--verbosity=debug` 檢視除厝的日誌
+        > 此指令執行過程中若出現問題，建議可以在最後加上 `--verbosity=debug` 檢視除錯的日誌
 
         ```bash
         # Export variables for command
@@ -415,9 +434,9 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 
   應用程式部署後會有兩個執行的容器以及一個初始化的容器，其中初始化的容器只是針對應用程式寫入相關的環境變數，因此其執行過程並不會有任何的日誌被輸出。
 
-  主要要檢查應用程式啟動後有沒有輸入任何錯誤的日誌，以及 Cloud SQL Proxy 有沒有正常連線到 Cloud SQL。
+  主要要檢查應用程式啟動後有沒有輸出任何錯誤的日誌，以及 Cloud SQL Proxy 有沒有正常連線到 Cloud SQL。
 
-- 檢查 `gcp-collector` 容器是否有輸入任何錯誤指標
+- 檢查 `gcp-collector` 容器是否有輸出任何錯誤指標
 
   應用程式啟動後約過 10 秒就會開始輸出指標，可以觀察在這過程中有沒有輸出類似 `Exporting failed. Dropping data` 字樣的錯誤日誌，正常來說沒有任何錯誤，其日誌會停在啟動成功的字樣。
 
@@ -425,13 +444,13 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 
   打開 GCM，透過**指標管理**頁面左下角的 `Workload` 分類檢查是否有收到 JVM 相關的指標，如下圖所示:
 
-  ![指標輸出範例](./documents/assets/01-example-for-metrics.png)
+  ![指標輸出範例](./docs/assets/readme/01-example-for-metrics.png)
 
   也可以從 GCM 的 Metrics Explorer 中透過以下方式查到相關指標
 
-  ![指標輸出範例-2](./documents/assets/02-example-for-metrics-2.png)
+  ![指標輸出範例-2](./docs/assets/readme/02-example-for-metrics-2.png)
 
-  ![指標輸出範例-3](./documents/assets/03-example-for-metrics-3.png)
+  ![指標輸出範例-3](./docs/assets/readme/03-example-for-metrics-3.png)
 
 以上步驟如果都成功，表示整個部署是成功的。
 
