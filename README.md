@@ -8,7 +8,7 @@
 針對可觀測性的基本知識以及 OpenTelemetry 簡介，可以參閱 `docs` 資料夾下的文件，或點選下方連結:
 
 - [可觀測性簡介](./docs/01-monitoring-basics.md)
-- [OpenTelemetry 簡介](./docs/02-opentelemetry-introduce.md)
+- [OpenTelemetry 簡介](./docs/02-opentelemetry-introduction.md)
 
 本 Lab 含有地端自架 Kubernetes 與 GKE 兩種部署方式。
 
