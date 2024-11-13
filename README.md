@@ -5,10 +5,10 @@
 
 本專案旨在研究如何在 Kubernetes 中透過部署 OpenTelemetry Operator 的方式，在 Spring Boot 沒有輸出任何可觀測性資料的情況下，透過 Auto Instrumentation 主動取得 JVM 相關的可觀測性資料。
 
-針對可觀測性的基本知識以及 OpenTelemetry 簡介，可以參閱 `docs` 資料夾下的文件，落點選下方連結:
+針對可觀測性的基本知識以及 OpenTelemetry 簡介，可以參閱 `docs` 資料夾下的文件，或點選下方連結:
 
 - [可觀測性簡介](./docs/01-monitoring-basics.md)
-- OpenTelemetry 簡介 (待補上)
+- [OpenTelemetry 簡介](./docs/02-opentelemetry-introduce.md)
 
 本 Lab 含有地端自架 Kubernetes 與 GKE 兩種部署方式。
 
@@ -18,7 +18,7 @@
 
 - [x] 撰寫 GCP 實作文件
 - [x] Cloud SQL Auth Proxy 改用 Workload Identity 驗證
-- [ ] 撰寫簡介文件
+- [x] 撰寫簡介文件
 - [ ] 撰寫地端 Kubernetes 實作文件
 
 ## Table of Contents
@@ -183,7 +183,7 @@
 
 2. 安裝 cert-manager
 
-    ```bash
+    ```shell
     helm install cert-manager jetstack/cert-manager \
       --namespace cert-manager \
       --create-namespace \
@@ -368,16 +368,16 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
     - 修改 `./kubernetes-yamls/gke/config-map-and-secret.yaml` 內容，將命名空間、資料庫連接埠、名稱、帳號、密碼寫上去
     - 修改 `./kubernetes-yamls/gke/deployment.yaml`，將命名空間、映像檔名稱改對，並針對建出來的 Pod 加上 `instrumentation.opentelemetry.io/inject-java: "true"` 的 Annotation，如下所示
 
-    ```yaml
-    # deployment.yaml
-    ...
-    spec:
-      template:
-        metadata:
-          annotations:
-            instrumentation.opentelemetry.io/inject-java: "true"
-    ...
-    ```
+      ```yaml
+      # deployment.yaml
+      ...
+      spec:
+        template:
+          metadata:
+            annotations:
+              instrumentation.opentelemetry.io/inject-java: "true"
+      ...
+      ```
 
 4. 依據下列步驟開始部署
     1. 透過以下指令將命名空間建立起來
