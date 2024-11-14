@@ -176,7 +176,7 @@
 
 1. 新增 Helm Chart 儲存庫
 
-    ```bash
+    ```shell
     helm repo add jetstack https://charts.jetstack.io
     helm repo update
     ```
@@ -205,14 +205,14 @@
 
 1. 新增 Helm Chart 儲存庫
 
-    ```bash
+    ```shell
     helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
     helm repo update
     ```
 
 2. 安裝 OpenTelemetry Operator
 
-    ```bash
+    ```shell
     helm install opentelemetry-operator open-telemetry/opentelemetry-operator \
       --set "manager.collectorImage.repository=otel/opentelemetry-collector-contrib" \
       --set "crds.create=true" \
@@ -226,8 +226,8 @@
 
 1. 透過以下指令部署 OpenTelemetry Collector
 
-    ```bash
-    kubectl apply -f ./kubernetes-yaml/opentelemetry-operator/gcp-open-telemetry-collector.yaml
+    ```shell
+    kubectl apply -f ./kubernetes-yamls/opentelemetry-operator/gcp-open-telemetry-collector.yaml
     ```
 
 2. 完成
@@ -236,7 +236,7 @@
 
 本 Lab 的測試應用程式是使用 Spring Boot 撰寫而成，因此我們須透過以下指令設定 Java 的 Instrumentation
 
-```bash
+```shell
 kubectl apply -f ./kubernetes-yamls/gke/instrumentation.yaml
 ```
 
@@ -251,7 +251,7 @@ kubectl apply -f ./kubernetes-yamls/gke/instrumentation.yaml
 > - `NAMESPACE`: GKE 中命名空間的名字
 > - `KSA_NAME`: 服務帳號名稱
 
-```bash
+```shell
 # Export variables for command
 PROJECT_ID=YOUR_PROJECT_ID
 PROJECT_NUMBER=YOUR_PROJECT_NUMBER
@@ -269,7 +269,7 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 
 > `PROJECT_ID` 與 `PROJECT_NUMBER` 請自行指定
 
-```bash
+```shell
 # Export variables for command
 PROJECT_ID=YOUR_PROJECT_ID
 PROJECT_NUMBER=YOUR_PROJECT_NUMBER
@@ -299,7 +299,7 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 
     - 使用 Docker 指令
 
-      ```bash
+      ```shell
       # Export variables for command
       IMAGE_REGISTRY_DOMAIN=YOUR_REGISTRY_DOMAIN
       IMAGE_NAME=YOUR_IMAGE_NAME
@@ -311,7 +311,7 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 
     - 使用 Podman 指令
 
-      ```bash
+      ```shell
       # Export variables for command
       IMAGE_REGISTRY_DOMAIN=YOUR_REGISTRY_DOMAIN
       IMAGE_NAME=YOUR_IMAGE_NAME
@@ -325,7 +325,7 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 
     - 使用 Docker 指令
 
-      ```bash
+      ```shell
       # Export variables for command
       IMAGE_REGISTRY_DOMAIN=YOUR_REGISTRY_DOMAIN
       IMAGE_NAME=YOUR_IMAGE_NAME
@@ -344,7 +344,7 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 
     - 使用 Podman 指令
 
-      ```bash
+      ```shell
       # Export variables for command
       IMAGE_REGISTRY_DOMAIN=YOUR_REGISTRY_DOMAIN
       IMAGE_NAME=YOUR_IMAGE_NAME
@@ -382,13 +382,13 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 4. 依據下列步驟開始部署
     1. 透過以下指令將命名空間建立起來
 
-        ```bash
+        ```shell
         kubectl apply -f ./kubernetes-yamls/gke/namespace.yaml
         ```
 
     2. 透過以下指令將 ConfigMap 與 Secrets 部署到 GKE 上
 
-        ```bash
+        ```shell
         kubectl apply -f ./kubernetes-yamls/gke/config-map-and-secrets.yaml
         ```
 
@@ -406,7 +406,7 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 
         > 此指令執行過程中若出現問題，建議可以在最後加上 `--verbosity=debug` 檢視除錯的日誌
 
-        ```bash
+        ```shell
         # Export variables for command
         PROJECT_ID=your_project_id
         K8S_NAMESPACE_NAME=service_namespace_name
@@ -422,7 +422,7 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 
     5. 透過以下指令將應用程式與 Service 部署到 GKE 上
 
-        ```bash
+        ```shell
         kubectl apply -f ./kubernetes-yamls/gke/deployment.yaml
         ```
 
