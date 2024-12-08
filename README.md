@@ -1,4 +1,3 @@
-<!-- markdownlint-disable MD024 -->
 <!-- markdownlint-disable MD028 -->
 <!-- markdownlint-disable MD033 -->
 
@@ -29,6 +28,11 @@
   - [部署應用程式](#部署應用程式)
   - [驗證結果](#驗證結果)
 - [在地端自架 Kubernetes 中實作](#在地端自架-kubernetes-中實作)
+  - [安裝 Prometheus](#安裝-prometheus)
+  - [設定 Prometheus 服務發現](#設定-prometheus-服務發現)
+  - [設定 OpenTelemetry Collector](#設定-opentelemetry-collector)
+  - [在地端 Kubernetes 上部署應用程式](#在地端-kubernetes-上部署應用程式)
+  - [驗證地端 Kubernetes 實驗結果](#驗證地端-kubernetes-實驗結果)
 - [參考資料](#參考資料)
   - [主要概念參考資料](#主要概念參考資料)
   - [OpenTelemetry 相關參考資料](#opentelemetry-相關參考資料)
@@ -568,11 +572,11 @@ scrape_configs:
 
 3. 完成
 
-### 部署應用程式
+### 在地端 Kubernetes 上部署應用程式
 
 請直接參考[部署應用程式](#部署應用程式)的說明。
 
-### 驗證結果
+### 驗證地端 Kubernetes 實驗結果
 
 部署後請依據以下步驟逐步檢查部署是否成功
 
