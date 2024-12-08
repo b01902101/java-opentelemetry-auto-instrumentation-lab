@@ -1,7 +1,7 @@
 apiVersion: opentelemetry.io/v1alpha1
 kind: OpenTelemetryCollector
 metadata:
-  name: otel
+  name: java-collector
   namespace: otel-system
 spec:
   config: |
@@ -24,10 +24,9 @@ spec:
     exporters:
       # NOTE: Prior to v0.86.0 use `logging` instead of `debug`.
       debug: {}
-      prometheusremotewrite:
-        endpoint: http://prometheus.lens-metrics.svc.cluster.local:9090/api/v1/push
-        tls:
-          insecure: true
+      prometheus:
+        endpoint: /metrics
+        namespace: monitoring-backends
 
     service:
       pipelines:
@@ -38,7 +37,7 @@ spec:
         metrics:
           receivers: [otlp]
           processors: [memory_limiter, batch]
-          exporters: [debug, prometheusremotewrite]
+          exporters: [debug, prometheus]
         logs:
           receivers: [otlp]
           processors: [memory_limiter, batch]

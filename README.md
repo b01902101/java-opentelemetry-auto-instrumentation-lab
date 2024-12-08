@@ -1,3 +1,4 @@
+<!-- markdownlint-disable MD024 -->
 <!-- markdownlint-disable MD028 -->
 <!-- markdownlint-disable MD033 -->
 
@@ -9,17 +10,11 @@
 
 - [可觀測性簡介](./docs/01-monitoring-basics.md)
 - [OpenTelemetry 簡介](./docs/02-opentelemetry-introduction.md)
+- [OpenTelemetry SDK Java 實作](./docs/03-java-sdk.md)
 
 本 Lab 含有地端自架 Kubernetes 與 GKE 兩種部署方式。
 
 > 本專案是由 [samuikaze/spring-boot-practice](https://github.com/samuikaze/spring-boot-practice) 修改而來，GCP 部份則是使用自己的個人帳號進行研究與實作。
-
-## TODO List
-
-- [x] 撰寫 GCP 實作文件
-- [x] Cloud SQL Auth Proxy 改用 Workload Identity 驗證
-- [x] 撰寫簡介文件
-- [ ] 撰寫地端 Kubernetes 實作文件
 
 ## Table of Contents
 
@@ -436,7 +431,7 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 
   主要要檢查應用程式啟動後有沒有輸出任何錯誤的日誌，以及 Cloud SQL Proxy 有沒有正常連線到 Cloud SQL。
 
-- 檢查 `gcp-collector` 容器是否有輸出任何錯誤指標
+- 檢查 Collector 容器是否有輸出任何錯誤日誌
 
   應用程式啟動後約過 10 秒就會開始輸出指標，可以觀察在這過程中有沒有輸出類似 `Exporting failed. Dropping data` 字樣的錯誤日誌，正常來說沒有任何錯誤，其日誌會停在啟動成功的字樣。
 
@@ -458,7 +453,152 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 
 本節會說明如何在地端自架 Kubernetes 上實作，並將可觀測性資料輸出到 Prometheus 中。
 
-**內容待完善**: 會再找時間把文件寫完，大部分的設定與 GCP 實作類似，只是要多架設 Prometheus 並修改相關設定。
+在地端的範例中，OpenTelemetry Java Agent 會透過 otlp 協定透過 gRPC 協定將遙測資料送到 Collector 上，Collector 將遙測資料執行指定的處理後，再透過 `/metric` 端點將遙測資料暴露出來，最後在讓 Prometheus 主動去指定的命名空間與端點撈取遙測資料。
+
+```mermaid
+flowchart LR
+  SBAPA -- "Send telemetry data" --> OCA
+  D["Prometheus"] -- "Collect telemetry data" --> OCB
+
+  subgraph Spring Boot Application Pod
+    direction LR
+    subgraph Application Container
+      direction LR
+        SBAPA["OpenTelemetry Java Agent"] -- "Collect telemetry data" --> SBAPB["Tomcat"]
+      end
+  end
+
+  subgraph OpenTelemetry Collector
+    direction LR
+    OCA["Receiver"] -- "Process and expose telemetry data" --> OCB["Prometheus Exporter<br>endpoint: /metric"]
+  end
+
+```
+
+### 安裝 Prometheus
+
+本範例透過 Bitnami 所提供的 [Helm Chart](https://github.com/bitnami/charts/tree/main/bitnami/prometheus) 進行 Prometheus 的安裝。
+> 請注意，該 Chart 預設的 Service 類型宣告為 Load Balancer，若沒有對外暴露服務的需求，或單純進行 PoC 使用，可以將該類型修改為 ClusterIP 即可
+
+```yaml
+# prometheus-server-service.yaml
+apiVersion: v1
+kind: Service
+...
+spec:
+  type: ClusterIP
+```
+
+### 設定 Prometheus 服務發現
+
+透過 Helm Chart 安裝後的設定檔會存放於 Kubernetes ConfigMap 中，可以透過修改該 ConfigMap 新增或移除服務發現的設定，本範例需要新增以下的服務發現設定:
+
+```yaml
+scrape_configs:
+  - job_name: sb-monitoring
+    kubernetes_sd_configs:
+      - role: endpoints
+        # 這邊設定這個 Job 要撈取遙測資料的命名空間名稱
+        namespaces:
+          names:
+          - monitoring-labs
+    # 指定 Prometheus 要撈取資料的端點名稱
+    metrics_path: /metrics
+```
+
+### 設定 OpenTelemetry Collector
+
+1. 修改 `./kubernetes-yamls/opentelemetry-operator/bare-metal-open-telemetry-collector.yaml` 檔內容
+
+    ```yaml
+    apiVersion: opentelemetry.io/v1alpha1
+    kind: OpenTelemetryCollector
+    metadata:
+      name: java-collector
+      namespace: otel-system
+    spec:
+      config: |
+        receivers:
+          otlp:
+            protocols:
+              grpc:
+                endpoint: 0.0.0.0:4317
+              http:
+                endpoint: 0.0.0.0:4318
+        processors:
+          memory_limiter:
+            check_interval: 1s
+            limit_percentage: 75
+            spike_limit_percentage: 15
+          batch:
+            send_batch_size: 10000
+            timeout: 10s
+
+        exporters:
+          # NOTE: Prior to v0.86.0 use `logging` instead of `debug`.
+          debug: {}
+          prometheus:
+            # 設定要輸出遙測資料的端點名稱
+            endpoint: /metrics
+            # 設定遙測資料 key 的前綴詞，所有的 `-` 會被轉換為 `_`
+            # 以下面名稱為例，在 Prometheus 上就會看到 monitoring_backends_process_runtime_jvm_cpu_utilization_ratio
+            namespace: monitoring-backends
+
+        service:
+          pipelines:
+            traces:
+              receivers: [otlp]
+              processors: [memory_limiter, batch]
+              exporters: [debug]
+            metrics:
+              receivers: [otlp]
+              processors: [memory_limiter, batch]
+              exporters: [debug, prometheus]
+            logs:
+              receivers: [otlp]
+              processors: [memory_limiter, batch]
+              exporters: [debug]
+    ```
+
+2. 透過以下指令部署 OpenTelemetry Collector
+
+    ```shell
+    kubectl apply -f ./kubernetes-yamls/opentelemetry-operator/bare-metal-open-telemetry-collector.yaml
+    ```
+
+3. 完成
+
+### 部署應用程式
+
+請直接參考[部署應用程式](#部署應用程式)的說明。
+
+### 驗證結果
+
+部署後請依據以下步驟逐步檢查部署是否成功
+
+- 確認應用程式有正常啟動
+
+  應用程式部署後會有兩個執行的容器以及一個初始化的容器，其中初始化的容器只是針對應用程式寫入相關的環境變數，因此其執行過程並不會有任何的日誌被輸出。
+
+  主要要檢查應用程式啟動後有沒有輸出任何錯誤的日誌。
+
+- 檢查 Collector 容器是否有輸出任何錯誤日誌
+
+  應用程式啟動後約過 10 秒就會開始輸出指標，可以觀察在這過程中有沒有輸出類似 `Exporting failed. Dropping data` 字樣的錯誤日誌。
+
+  ![驗證結果3](./docs/assets/readme/07-verify-result-3.png)
+
+- 檢查 Prometheus 上是否有收到指標資料
+
+  將部署的 Prometheus 服務透過 Port 轉發來檢視是否有成功讓其撈到相關的指標資料
+
+  ![驗證結果1](./docs/assets/readme/05-verify-result-1.png)
+
+  也可以透過 Prometheus 上方選單點選 Status > Targets 去看有沒有撈到相對應的遙測資料
+
+  ![驗證結果2](./docs/assets/readme/06-verify-result-2.png)
+
+以上步驟如果都成功，表示整個部署是成功的。
 
 ## 參考資料
 
@@ -483,12 +623,17 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 - [Opentelemetry collector 在 kubernetes 中的介紹，包含 opentelemetry 的運作基礎 - Medium](https://sean22492249.medium.com/opentelemetry-collector-%E5%9C%A8-kubernetes-%E4%B8%AD%E7%9A%84%E4%BB%8B%E7%B4%B9-%E5%8C%85%E5%90%AB-opentelemetry-%E7%9A%84%E9%81%8B%E4%BD%9C%E5%9F%BA%E7%A4%8E-9b128f9d541b)
 - [Using the Collector Builder with Sample Configs on GCP - OpenTelemetry Blog](https://opentelemetry.io/blog/2022/collector-builder-sample/)
 - [Google Cloud Exporter - open-telemetry/opentelemetry-collector-contrib - GitHub](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/googlecloudexporter)
+- [Prometheus Exporter - open-telemetry/opentelemetry-collector-contrib - GitHub](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/exporter/prometheusexporter/README.md)
 
 ### Prometheus 相關參考資料
 
+- [Bitnami package for Prometheus](https://github.com/bitnami/charts/tree/main/bitnami/prometheus/#installing-the-chart)
+- [<scrape_config> - Configuration - Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config)
 - [Can't use prometheusremotewrite in OpenTelemetry collector - r/OpenTelemetry - reddit](https://www.reddit.com/r/OpenTelemetry/comments/1efmocv/cant_use_prometheusremotewrite_in_opentelemetry/)
 - [OTLP Receiver - Feature flags - Prometheus](https://prometheus.io/docs/prometheus/latest/feature_flags/#otlp-receiver)
 - [Using Prometheus as your OpenTelemetry backend - Prometheus](https://prometheus.io/docs/guides/opentelemetry/)
+- [Monitoring with Prometheus](https://www.cloudraft.io/blog/monitoring-with-prometheus)
+- [Prometheus Pushgateways - Everything You Need To Know](https://www.metricfire.com/blog/prometheus-pushgateways-everything-you-need-to-know/)
 
 ### Spring Boot 相關參考資料
 
@@ -496,6 +641,7 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 - [maven - Official Image - Docker Hub](https://hub.docker.com/_/maven)
 - [tomcat - Official Image - Docker Hub](https://hub.docker.com/_/tomcat)
 - [eclipse-temurin - Official Image - Docker Hub](https://hub.docker.com/_/eclipse-temurin)
+- [OpenTelemetry Java - MVN Repository](https://mvnrepository.com/artifact/io.opentelemetry/opentelemetry-sdk)
 - [Deploying Spring Boot War in Tomcat running in Docker - Medium](https://iamvickyav.medium.com/deploying-spring-boot-war-in-tomcat-based-docker-2b689b206496)
 - [Deploying Spring boot War Application on Docker - Medium](https://medium.com/%E7%A8%8B%E5%BC%8F%E8%A3%A1%E6%9C%89%E8%9F%B2/deploying-spring-boot-war-application-on-docker-6c696626ef00)
 - [Deploying JavaWeb Application on Docker Tomcat Service - Medium](https://medium.com/%E7%A8%8B%E5%BC%8F%E8%A3%A1%E6%9C%89%E8%9F%B2/deploying-javaweb-application-on-docker-tomcat-service-e5c576c02819)
