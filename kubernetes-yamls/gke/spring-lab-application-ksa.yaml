@@ -1,9 +1,7 @@
-# spring-lab-application-ksa.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
+  name: otel-collector-ksa
   annotations:
-    # You need to create GSA and assign the roles first.
-    iam.gke.io/gcp-service-account: YOUR_GCP_SERVICE_ACCOUNT_NAME
-  name: spring-lab-application-ksa
-  namespace: monitoring-labs
+    iam.gke.io/gcp-service-account: otel-collector@durable-will-453707-f4.iam.gserviceaccount.com
+  namespace: observability

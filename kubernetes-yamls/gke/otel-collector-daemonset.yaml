@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: otel-collector
+  namespace: observability
+spec:
+  selector:
+    matchLabels:
+      app: otel-collector
+  template:
+    metadata:
+      labels:
+        app: otel-collector
+    spec:
+      serviceAccountName: otel-collector-ksa
+      containers:
+      - name: otel-collector
+        image: otel/opentelemetry-collector-contrib:latest
+        args:
+          - "--config=/etc/otel-collector-config.yaml"
+        volumeMounts:
+          - mountPath: /etc/otel-collector-config.yaml
+            subPath: otel-collector-config.yaml
+            name: otel-config
+        ports:
+          - containerPort: 4317
+            protocol: TCP
+      volumes:
+      - name: otel-config
+        configMap:
+          name: otel-collector-config
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: observability
+data:
+  otel-collector-config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc: 
+            endpoint: "0.0.0.0:4317"
+          http:
+            endpoint: "0.0.0.0:4318"
+      prometheus:
+        config:
+          scrape_configs:
+            - job_name: "otel"
+              scrape_interval: 10s
+              static_configs:
+                - targets: ["localhost:9464"]
+
+
+    processors:
+      batch: 
+        timeout: 60s  # 增加批處理時間
+        send_batch_size: 1000  # 增加批量大小
+      resource:
+        attributes:
+          - key: service.name
+            value: spring-boot-monitoring-lab
+            action: upsert
+        
+
+    exporters:
+      debug:
+      googlecloud:
+        project: "durable-will-453707-f4"  
+        user_agent: "opentelemetry-collector"
+        metric:
+          prefix: "custom.googleapis.com/opentelemetry/"
+          resource_filters:
+            - prefix: "k8s_container"
+        log:
+          default_log_name: "otel-logs"
+
+    service:
+      # pipelines:
+      #   traces:
+      #     receivers: [otlp]
+      #     processors: [batch]
+      #     exporters: [debug, googlecloud]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          exporters: [googlecloud]
+        metrics:   # 🔹 確保 metrics pipeline 存在
+          receivers: [otlp]
+          exporters: [googlecloud]
+        logs:
+          receivers: [otlp]
+          exporters: [googlecloud]
+
+
+          

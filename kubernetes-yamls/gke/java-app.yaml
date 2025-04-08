@@ -1,0 +1,144 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spring-boot-monitoring-lab
+  labels:
+    app: spring-boot-monitoring-lab
+  namespace: observability
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: spring-boot-monitoring-lab
+  template:
+    metadata:
+      labels:
+        app: spring-boot-monitoring-lab
+    spec:
+      #TODO
+      serviceAccountName: otel-collector-ksa
+      volumes:
+        - name: agent-volume
+          emptyDir: {}  # 讓 Init Container 和 Java 容器共用
+
+      initContainers:
+        - name: init-download-agent
+          image: google/cloud-sdk:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - "gsutil cp gs://otel_bucket/opentelemetry-javaagent.jar /mnt/agent/opentelemetry-javaagent.jar"
+          volumeMounts:
+            - mountPath: "/mnt/agent"
+              name: agent-volume
+      containers:
+      - name: spring-boot-monitoring-lab
+        image: asia-east1-docker.pkg.dev/durable-will-453707-f4/image/spring-boot-monitoring-lab:v4
+        volumeMounts:
+          - mountPath: "/mnt/agent"
+            name: agent-volume
+        env:
+          - name: DATABASE_HOST
+            valueFrom:
+              configMapKeyRef:
+                name: otel-agent-config
+                key: database.host
+          - name: DATABASE_PORT
+            valueFrom:
+              configMapKeyRef:
+                name: otel-agent-config
+                key: database.port
+          - name: DATABASE_NAME
+            valueFrom:
+              configMapKeyRef:
+                name: otel-agent-config
+                key: database.name
+          - name: SCHEMA_NAME
+            valueFrom:
+              configMapKeyRef:
+                name: otel-agent-config
+                key: database.schema
+          - name: DATABASE_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: otel-agent-secrets
+                key: database.username
+          - name: DATABASE_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: otel-agent-secrets
+                key: database.password
+          - name: SWAGGER_UI_PATH
+            valueFrom:
+              configMapKeyRef:
+                name: otel-agent-config
+                key: swagger.ui.path
+          - name: SWAGGER_API_PATH
+            valueFrom:
+              configMapKeyRef:
+                name: otel-agent-config
+                key: swagger.api.path          
+        
+          #Java Agent
+          - name: JAVA_TOOL_OPTIONS
+            value: "-javaagent:/mnt/agent/opentelemetry-javaagent.jar"
+          - name: OTEL_METRIC_EXPORT_INTERVAL
+            value: "60000"
+          - name: OTEL_EXPORTER_OTLP_ENDPOINT
+            value: "http://otel-collector.observability:4317"
+          - name: OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
+            value: "http://otel-collector.observability:4317"
+          - name: OTEL_METRICS_EXPORTER
+            value: "otlp"
+          - name: OTEL_EXPORTER_OTLP_PROTOCOL
+            value: "grpc"
+          - name: OTEL_RESOURCE_ATTRIBUTES
+            value: "service.name=spring-boot-monitoring-lab,service.version=1.0,gcp.log_name=my-java-log"
+          - name: OTEL_TRACES_EXPORTER
+            value: "otlp"
+          - name: OTEL_LOGS_EXPORTER
+            value: "otlp"
+          - name: OTEL_JAVAAGENT_DEBUG
+            value: "true"
+        ports:
+          - containerPort: 8080
+            protocol: TCP
+      # #Sidecar
+      # - name: otel-sidecar
+      #   image: otel/opentelemetry-collector-contrib:latest
+      #   args:
+      #     - "--config=/etc/otel-sidecar-config.yaml"
+      #   volumeMounts:
+      #   - mountPath: /etc/otel-sidecar-config.yaml
+      #     subPath: otel-sidecar-config.yaml
+      #     name: otel-sidecar-config
+      # volumes:
+      # - name: otel-sidecar-config
+      #   configMap:
+      #     name: otel-sidecar-config
+      
+# ---
+# apiVersion: v1
+# kind: ConfigMap
+# metadata:
+#   name: otel-sidecar-config
+#   namespace: observability
+# data:
+#   otel-sidecar-config.yaml: |
+#     receivers:
+#       otlp:
+#         protocols:
+#           grpc: {}
+#           http: {}
+#     exporters:
+#       otlp:
+#         endpoint: "http://otel-collector.observability:4317"
+#         tls:
+#           insecure: true
+
+#     service:
+#       pipelines:
+#         traces:
+#           receivers: [otlp]
+#           exporters: [otlp]

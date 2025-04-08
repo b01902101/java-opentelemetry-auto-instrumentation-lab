@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: observability  # 請確保你的 otel-collector 也在這個 namespace
+  labels:
+    app: otel-collector
+spec:
+  selector:
+    app: otel-collector  # 這要對應 otel-collector Pod 的 label
+  ports:
+    - name: otlp-grpc
+      port: 4317        # 給 OpenTelemetry Protocol (OTLP) gRPC
+      targetPort: 4317
+      protocol: TCP
+    - name: otlp-http
+      port: 4318        # 給 OpenTelemetry Protocol (OTLP) HTTP
+      targetPort: 4318
+      protocol: TCP
+    - name: zipkin
+      port: 9411        # 給 Zipkin
+      targetPort: 9411
+      protocol: TCP
+    - name: prometheus
+      port: 8888        # 給 Prometheus Metrics
+      targetPort: 8888
+      protocol: TCP
+  type: ClusterIP  # 內部 Cluster 內可以存取，外部無法直接訪問
