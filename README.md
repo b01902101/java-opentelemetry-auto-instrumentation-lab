@@ -13,7 +13,7 @@
 
 本 Lab 部署於 GKE 上。
 
-> 本專案是由 [samuikaze/java-opentelemetry-auto-instrumentation-lab](https://github.com/samuikaze/java-opentelemetry-auto-instrumentation-lab/) 修改而來，移除sql部份，並使用自己的個人帳號進行研究與實作。
+> 本次PoC使用自己的個人帳號進行研究與實作，詳細原始碼參考[Github Repo](https://github.com/b01902101/java-opentelemetry-auto-instrumentation-lab)。
 
 ## Table of Contents
 
@@ -24,8 +24,8 @@
     - [前置準備](#前置準備)
     - [準備 Docker Image](#準備-docker-image)
     - [準備 OpenTelemetry Java Agent](#準備-opentelemetry-java-agent)
-    - [部署 OpenTelemetry Collector](#部署-opentelemetry-collector)
-    - [設定 OpenTelemetry Collector](#設定-opentelemetry-collector)
+    - [部署 OpenTelemetry Collector DaemonSet](#部署-opentelemetry-collector-daemonset)
+    - [設定 OpenTelemetry Collector Service](#設定-opentelemetry-collector-service)
     - [透過 Workload Identity 指定 IAM 角色給 Kubernetes 的 Service Account](#透過-workload-identity-指定-iam-角色給-kubernetes-的-service-account)
     - [部署應用程式](#部署應用程式)
     - [驗證結果](#驗證結果)
@@ -207,9 +207,105 @@
 
 4. 完成
 
-### 部署 OpenTelemetry Collector
+### 部署 OpenTelemetry Collector DaemonSet
 
-1. 透過以下yaml檔案部署kubernetes-yamls/gke/otel-collector-daemonset.yaml
+1. `./kubernetes-yamls/gke/otel-collector-daemonset.yaml` 檔內容
+
+   ```yaml
+    apiVersion: apps/v1
+    kind: DaemonSet
+    metadata:
+      name: otel-collector
+      namespace: observability
+    spec:
+      selector:
+        matchLabels:
+          app: otel-collector
+      template:
+        metadata:
+          labels:
+            app: otel-collector
+        spec:
+          serviceAccountName: otel-collector-ksa
+          containers:
+          - name: otel-collector
+            image: otel/opentelemetry-collector-contrib:latest
+            args:
+              - "--config=/etc/otel-collector-config.yaml"
+            volumeMounts:
+              - mountPath: /etc/otel-collector-config.yaml
+                subPath: otel-collector-config.yaml
+                name: otel-config
+            ports:
+              - containerPort: 4317
+                protocol: TCP
+          volumes:
+          - name: otel-config
+            configMap:
+              name: otel-collector-config
+
+    ---
+    apiVersion: v1
+    kind: ConfigMap
+    metadata:
+      name: otel-collector-config
+      namespace: observability
+    data:
+      otel-collector-config.yaml: |
+        receivers:
+          otlp:
+            protocols:
+              grpc: 
+                endpoint: "0.0.0.0:4317"
+              http:
+                endpoint: "0.0.0.0:4318"
+          prometheus:
+            config:
+              scrape_configs:
+                - job_name: "otel"
+                  scrape_interval: 10s
+                  static_configs:
+                    - targets: ["localhost:9464"]
+        processors:
+          batch: 
+            timeout: 60s  # 增加批處理時間
+            send_batch_size: 1000  # 增加批量大小
+          resource:
+            attributes:
+              - key: service.name
+                value: spring-boot-monitoring-lab
+                action: upsert
+        exporters:
+          debug:
+          googlecloud:
+            project: "durable-will-453707-f4"  
+            user_agent: "opentelemetry-collector"
+            metric:
+              prefix: "custom.googleapis.com/opentelemetry/"
+              resource_filters:
+                - prefix: "k8s_container"
+            log:
+              default_log_name: "otel-logs"
+
+      service:
+        # pipelines:
+        #   traces:
+        #     receivers: [otlp]
+        #     processors: [batch]
+        #     exporters: [debug, googlecloud]
+        pipelines:
+          traces:
+            receivers: [otlp]
+            exporters: [googlecloud]
+          metrics:   # 🔹 確保 metrics pipeline 存在
+            receivers: [otlp]
+            exporters: [googlecloud]
+          logs:
+            receivers: [otlp]
+            exporters: [googlecloud] 
+   ```
+
+1. 部署`kubernetes-yamls/gke/otel-collector-daemonset.yaml`
 
     ```shell
     kubectl apply -f ./kubernetes-yamls/gke/otel-collector-daemonset.yaml
@@ -217,8 +313,7 @@
 
 2. 完成
 
-
-### 設定 OpenTelemetry Collector
+### 設定 OpenTelemetry Collector Service
 
 1. 修改 `./kubernetes-yamls/gke/otel-collector-service.yaml` 檔內容
 
@@ -261,7 +356,6 @@
     ```
 
 3. 完成
-
 
 ### 透過 Workload Identity 指定 IAM 角色給 Kubernetes 的 Service Account
 
@@ -354,13 +448,11 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
       docker push $IMAGE_REGISTRY_DOMAIN/$IMAGE_NAME:$IMAGE_VERSION
       ```
 
-
 3. 修改部署檔
 
     - 修改 `./kubernetes-yamls/gke/spring-lab-application-ksa.yaml` 內容，將 Service Account 資訊修改為正確的資訊。
     - 修改 `./kubernetes-yamls/gke/namespace.yaml` 內容，本 Lab 所使用的命名空間為 `observability`
     - 修改 `./kubernetes-yamls/gke/config-map-and-secret.yaml` 內容，將命名空間、名稱、帳號、密碼寫上去
-
 
       ```yaml
       # deployment.yaml
@@ -395,7 +487,6 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
         - 指定以下角色給此服務帳號
           - Workload Identity 使用者
 
-
     4. 透過以下指令將應用程式與 Service 部署到 GKE 上
 
         ```shell
@@ -429,7 +520,6 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
   ![指標輸出範例-3](./docs/assets/readme/03-example-for-metrics-3.png)
 
 以上步驟如果都成功，表示整個部署是成功的。
-
 
 ## 參考資料
 
