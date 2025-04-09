@@ -1,5 +1,0 @@
-# namespace-definition.yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: monitoring-labs

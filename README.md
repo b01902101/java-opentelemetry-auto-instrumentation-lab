@@ -1,9 +1,9 @@
 <!-- markdownlint-disable MD028 -->
 <!-- markdownlint-disable MD033 -->
 
-# 透過 OpenTelemetry Operator 主動取得 Java Spring Boot 專案中的可觀測性資料
+# 透過 OpenTelemetry Java Agent 取得 Java Spring Boot 專案中的可觀測性資料
 
-本專案旨在研究如何在 Kubernetes 中透過部署 OpenTelemetry Operator 的方式，在 Spring Boot 沒有輸出任何可觀測性資料的情況下，透過 Auto Instrumentation 主動取得 JVM 相關的可觀測性資料。
+本專案旨在研究如何在 Kubernetes 中透過以DaemonSet的方式OpenTelemetry Collector的方式，將 JVM 相關的可觀測性資料輸出到GCM上。
 
 針對可觀測性的基本知識以及 OpenTelemetry 簡介，可以參閱 `docs` 資料夾下的文件，或點選下方連結:
 
@@ -11,35 +11,30 @@
 - [OpenTelemetry 簡介](./docs/02-opentelemetry-introduction.md)
 - [OpenTelemetry SDK Java 實作](./docs/03-java-sdk.md)
 
-本 Lab 含有地端自架 Kubernetes 與 GKE 兩種部署方式。
+本 Lab 部署於 GKE 上。
 
-> 本專案是由 [samuikaze/spring-boot-practice](https://github.com/samuikaze/spring-boot-practice) 修改而來，GCP 部份則是使用自己的個人帳號進行研究與實作。
+> 本專案是由 [samuikaze/java-opentelemetry-auto-instrumentation-lab](https://github.com/samuikaze/java-opentelemetry-auto-instrumentation-lab/) 修改而來，移除sql部份，並使用自己的個人帳號進行研究與實作。
 
 ## Table of Contents
 
-- [在 Google Cloud Platform 上實作](#在-google-cloud-platform-上實作)
-  - [需求環境](#需求環境)
-  - [前置準備](#前置準備)
-  - [部署 cert-manager](#部署-cert-manager)
-  - [部署 OpenTelemetry Operator](#部署-opentelemetry-operator)
-  - [部署 OpenTelemetry Collector](#部署-opentelemetry-collector)
-  - [設定 Auto Instrumentation](#設定-auto-instrumentation)
-  - [透過 Workload Identity 指定 IAM 角色給 Kubernetes 的 Service Account](#透過-workload-identity-指定-iam-角色給-kubernetes-的-service-account)
-  - [部署應用程式](#部署應用程式)
-  - [驗證結果](#驗證結果)
-- [在地端自架 Kubernetes 中實作](#在地端自架-kubernetes-中實作)
-  - [安裝 Prometheus](#安裝-prometheus)
-  - [設定 Prometheus 服務發現](#設定-prometheus-服務發現)
-  - [設定 OpenTelemetry Collector](#設定-opentelemetry-collector)
-  - [在地端 Kubernetes 上部署應用程式](#在地端-kubernetes-上部署應用程式)
-  - [驗證地端 Kubernetes 實驗結果](#驗證地端-kubernetes-實驗結果)
-- [參考資料](#參考資料)
-  - [主要概念參考資料](#主要概念參考資料)
-  - [OpenTelemetry 相關參考資料](#opentelemetry-相關參考資料)
-  - [Prometheus 相關參考資料](#prometheus-相關參考資料)
-  - [Spring Boot 相關參考資料](#spring-boot-相關參考資料)
-  - [GCP 相關參考資料](#gcp-相關參考資料)
-  - [其它方案](#其它方案)
+- [透過 OpenTelemetry Java Agent 取得 Java Spring Boot 專案中的可觀測性資料](#透過-opentelemetry-java-agent-取得-java-spring-boot-專案中的可觀測性資料)
+  - [Table of Contents](#table-of-contents)
+  - [在 Google Cloud Platform 上實作](#在-google-cloud-platform-上實作)
+    - [需求環境](#需求環境)
+    - [前置準備](#前置準備)
+    - [準備 Docker Image](#準備-docker-image)
+    - [準備 OpenTelemetry Java Agent](#準備-opentelemetry-java-agent)
+    - [部署 OpenTelemetry Collector](#部署-opentelemetry-collector)
+    - [設定 OpenTelemetry Collector](#設定-opentelemetry-collector)
+    - [透過 Workload Identity 指定 IAM 角色給 Kubernetes 的 Service Account](#透過-workload-identity-指定-iam-角色給-kubernetes-的-service-account)
+    - [部署應用程式](#部署應用程式)
+    - [驗證結果](#驗證結果)
+  - [參考資料](#參考資料)
+    - [主要概念參考資料](#主要概念參考資料)
+    - [OpenTelemetry 相關參考資料](#opentelemetry-相關參考資料)
+    - [Spring Boot 相關參考資料](#spring-boot-相關參考資料)
+    - [GCP 相關參考資料](#gcp-相關參考資料)
+    - [其它方案](#其它方案)
 
 ## 在 Google Cloud Platform 上實作
 
@@ -53,37 +48,12 @@
 
 ### 前置準備
 
-1. Cloud SQL
-
-    <details>
-      <summary>按我展開設定詳細內容</summary>
-
-      - 在專案中啟用 Cloud SQL API
-      - 依據以下規格建立 Cloud SQL 執行個體
-
-        |項目名稱|規格|
-        |---|---|
-        |資料庫引擎|PostgreSQL|
-        |Cloud SQL 版本|Enterprise / 沙箱環境|
-        |資料庫引擎版本|PostgreSQL 14|
-        |執行個體名稱|`spring-boot-open-telemetry-lab`|
-        |postgres 帳號的密碼|`spring-boot-open-telemetry-lab-postgres`|
-        |地區|單一可用區 / `asia-east1` (台灣)|
-        |機器設定|共用核心 / 1 vCPU，0.614 GB|
-        |儲存空間|HDD / 10GB / 不啟用自動增加儲存空間|
-        |連線|私人 IP / default|
-        |資料保護|全部不勾選|
-        |維護|不限 / 任何期間|
-
-      - 待其建立完成即可
-    </details>
-
-2. Google Kubernetes Engine
+1. Google Kubernetes Engine
 
     <details>
       <summary>按我展開設定詳細內容</summary>
       <br />
-      本 Lab 是透過 Sidecar 方式將應用程式與資料庫間的連線建立起來，因此需要透過 Google Kubernetes Engine 模擬情境
+      本 Lab 透過 Google Kubernetes Engine 模擬情境Java Server部署在GKE上，並需要監控的情況，以下為準備GKE的步驟
 
       - 啟用 Google Kubernetes Engine API
       - 建立叢集，並從畫面右上角選擇建立 Standard 的叢集
@@ -92,7 +62,7 @@
 
           |項目名稱|規格|
           |---|---|
-          |名稱|`sb-opentelemetry-labs`|
+          |名稱|`spring-boot-monitoring-lab`|
           |位置|區域性 / `asia-east1-a`|
           |發佈版本|穩定|
 
@@ -148,96 +118,150 @@
           - 將「啟用 Managed Service for Prometheus」勾選拿掉
     </details>
 
-3. Cloud NAT
+### 準備 Docker Image
 
-    <details>
-      <summary>按我展開設定詳細內容</summary>
-      <br />
-      由於 GKE 是私人叢集，因此須建立 Cloud NAT 轉發流量，否則會導致 Kubernetes 無法拉取外部映像檔儲存庫中的映像檔
+利用本專案的Code建立一個簡單的Java Server，這部分也可以利用其他的Java Server，建立好之後推送到GCP Artifact repository
 
-      - 閘道名稱: `nat-config`
-      - 網路位址轉譯 (NAT) 類型: 公開
-      - Cloud Router
-        - 網路: `default`
-        - 區域: `asia-east1 (台灣)`
-        - Cloud Router: 點選「建立 Cloud Router」，填入名稱 `nat-router` 後其餘留預設值即可
-
-        ![Cloud NAT 設定](./docs/assets/readme/04-cloud-nat-setting.png)
-
-      點選建立即可
-    </details>
-
-### 部署 cert-manager
-
-由於 OpenTelemetry Operator 會透過 Webhook 與 API 伺服器進行溝通，因此必須提供 TLS 憑證供其驗證使用，官方目前推薦的方式為安裝 cert-manager，若無法安裝 cert-manager，則必須自行提供憑證或透過其它方式達到目的。
-
-本 Lab 是會以安裝 cert-manager 為主，透過以下指令安裝 cert-manager:
-
-1. 新增 Helm Chart 儲存庫
+1. 建立 Docker Image
 
     ```shell
-    helm repo add jetstack https://charts.jetstack.io
-    helm repo update
+    cd /path/to/project #專案路徑
+    docker build -t asia-east1-docker.pkg.dev/durable-will-453707-f4/image/spring-boot-monitoring-lab:v4 . 
     ```
 
-2. 安裝 cert-manager
+2. 推送 Docker Image
 
     ```shell
-    helm install cert-manager jetstack/cert-manager \
-      --namespace cert-manager \
-      --create-namespace \
-      --version v1.11.0 \
-      --set installCRDs=true
+    docker push asia-east1-docker.pkg.dev/durable-will-453707-f4/image/spring-boot-monitoring-lab:v4
     ```
 
 3. 完成
 
-### 部署 OpenTelemetry Operator
+### 準備 OpenTelemetry Java Agent
 
-這邊請注意，雖然 GCP 有提供 OpenTelemetry 的解決方案，但其未包含 Instrumentation 相關的 CRDs，因此建議透過部署 OpenTelemetry Operator 方式達到目的。
-
-透過以下步驟部署 OpenTelemetry Operator:
-
-> `manager.collectorImage.repository` 請指定為 `otel/opentelemetry-collector-contrib` 映像，因為 `otel/opentelemetry-collector-k8s` 目前尚未支援 Google Cloud 的可觀測性資料輸出
-
-> 這邊會將 OpenTelemetry Operator 部署在 `otel-system` 命名空間中，這個值可以自行修改，但後續有命名空間名稱為 `otel-system` 者，也要跟著修改。
-
-1. 新增 Helm Chart 儲存庫
+1. 參考[官方文檔](https://opentelemetry.io/docs/zero-code/java/agent/getting-started/)的部署步驟，從最新的[release](https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases)取得Java Agent檔案，並將java agent檔案上傳到Google Cloud Storage中:
 
     ```shell
-    helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
-    helm repo update
+    gsutil cp [本機檔案路徑] gs://[你的 bucket 名稱]/[目標路徑]
     ```
 
-2. 安裝 OpenTelemetry Operator
+2. 使用Initial Container的方式，從GCS上拉取檔案，再使用同一個mount volume讓Java server可以使用Agent檔案
+
+   ```yaml
+     template:
+    metadata:
+      labels:
+        app: spring-boot-monitoring-lab
+    spec:
+      serviceAccountName: otel-collector-ksa
+      volumes:
+        - name: agent-volume
+          emptyDir: {}  # 讓 Init Container 和 Java 容器共用
+
+      initContainers:
+        - name: init-download-agent
+          image: google/cloud-sdk:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - "gsutil cp gs://otel_bucket/opentelemetry-javaagent.jar /mnt/agent/opentelemetry-javaagent.jar"
+          volumeMounts:
+            - mountPath: "/mnt/agent"
+              name: agent-volume
+      containers:
+      - name: spring-boot-monitoring-lab
+        image: asia-east1-docker.pkg.dev/durable-will-453707-f4/image/spring-boot-monitoring-lab:v4
+        volumeMounts:
+          - mountPath: "/mnt/agent"
+            name: agent-volume
+   ```
 
     ```shell
-    helm install opentelemetry-operator open-telemetry/opentelemetry-operator \
-      --set "manager.collectorImage.repository=otel/opentelemetry-collector-contrib" \
-      --set "crds.create=true" \
-      --namespace otel-system \
-      --create-namespace
+    kubectl apply -f ./kubernetes-yamls/gke/java-app.yaml
     ```
 
-3. 完成
+3. 指定Java啟動參數
+
+   ```yaml
+        #Java Agent
+    - name: JAVA_TOOL_OPTIONS
+      value: "-javaagent:/mnt/agent/opentelemetry-javaagent.jar"
+    - name: OTEL_METRIC_EXPORT_INTERVAL
+      value: "60000"
+    - name: OTEL_EXPORTER_OTLP_ENDPOINT
+      value: "http://otel-collector.observability:4317"
+    - name: OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
+      value: "http://otel-collector.observability:4317"
+    - name: OTEL_METRICS_EXPORTER
+      value: "otlp"
+    - name: OTEL_EXPORTER_OTLP_PROTOCOL
+      value: "grpc"
+    - name: OTEL_RESOURCE_ATTRIBUTES
+      value: "service.name=spring-boot-monitoring-lab,service.version=1.0,gcp.log_name=my-java-log"
+    - name: OTEL_TRACES_EXPORTER
+      value: "otlp"
+    - name: OTEL_LOGS_EXPORTER
+      value: "otlp"
+    - name: OTEL_JAVAAGENT_DEBUG
+      value: "true"
+   ```
+
+4. 完成
 
 ### 部署 OpenTelemetry Collector
 
-1. 透過以下指令部署 OpenTelemetry Collector
+1. 透過以下yaml檔案部署kubernetes-yamls/gke/otel-collector-daemonset.yaml
 
     ```shell
-    kubectl apply -f ./kubernetes-yamls/opentelemetry-operator/gcp-open-telemetry-collector.yaml
+    kubectl apply -f ./kubernetes-yamls/gke/otel-collector-daemonset.yaml
     ```
 
 2. 完成
 
-### 設定 Auto Instrumentation
 
-本 Lab 的測試應用程式是使用 Spring Boot 撰寫而成，因此我們須透過以下指令設定 Java 的 Instrumentation
+### 設定 OpenTelemetry Collector
 
-```shell
-kubectl apply -f ./kubernetes-yamls/gke/instrumentation.yaml
-```
+1. 修改 `./kubernetes-yamls/gke/otel-collector-service.yaml` 檔內容
+
+    ```yaml
+    apiVersion: v1
+    kind: Service
+    metadata:
+      name: otel-collector
+      namespace: observability  # 請確保你的 otel-collector 也在這個 namespace
+      labels:
+        app: otel-collector
+    spec:
+      selector:
+        app: otel-collector  # 這要對應 otel-collector Pod 的 label
+      ports:
+        - name: otlp-grpc
+          port: 4317        # 給 OpenTelemetry Protocol (OTLP) gRPC
+          targetPort: 4317
+          protocol: TCP
+        - name: otlp-http
+          port: 4318        # 給 OpenTelemetry Protocol (OTLP) HTTP
+          targetPort: 4318
+          protocol: TCP
+        - name: zipkin
+          port: 9411        # 給 Zipkin
+          targetPort: 9411
+          protocol: TCP
+        - name: prometheus
+          port: 8888        # 給 Prometheus Metrics
+          targetPort: 8888
+          protocol: TCP
+      type: ClusterIP  # 內部 Cluster 內可以存取，外部無法直接訪問
+
+    ```
+
+2. 透過以下指令部署 OpenTelemetry Collector
+
+    ```shell
+    kubectl apply -f ./kubernetes-yamls/gke/otel-collector-service.yaml
+    ```
+
+3. 完成
+
 
 ### 透過 Workload Identity 指定 IAM 角色給 Kubernetes 的 Service Account
 
@@ -287,6 +311,7 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 - `roles/monitoring.metricWriter`: 指標資料寫入
 - `roles/cloudtrace.agent`: 追蹤資料寫入
 - `roles/logging.logWriter`: 日誌資料寫入
+- `roles/storage.objectViewer`: 讀取GCS資料
 
 ### 部署應用程式
 
@@ -306,18 +331,6 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 
       # Issue command
       docker build -t $IMAGE_REGISTRY_DOMAIN/$IMAGE_NAME:$IMAGE_VERSION
-      ```
-
-    - 使用 Podman 指令
-
-      ```shell
-      # Export variables for command
-      IMAGE_REGISTRY_DOMAIN=YOUR_REGISTRY_DOMAIN
-      IMAGE_NAME=YOUR_IMAGE_NAME
-      IMAGE_VERSION=IMAGE_VERSION
-
-      # Issue command
-      podman build -t $IMAGE_REGISTRY_DOMAIN/$IMAGE_NAME:$IMAGE_VERSION
       ```
 
 2. 將映像檔推送到映像檔儲存庫
@@ -341,31 +354,13 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
       docker push $IMAGE_REGISTRY_DOMAIN/$IMAGE_NAME:$IMAGE_VERSION
       ```
 
-    - 使用 Podman 指令
-
-      ```shell
-      # Export variables for command
-      IMAGE_REGISTRY_DOMAIN=YOUR_REGISTRY_DOMAIN
-      IMAGE_NAME=YOUR_IMAGE_NAME
-      IMAGE_VERSION=IMAGE_VERSION
-
-      # Issue command
-      # If you are not using Docker Hub as your image registry
-      # You need to use the second command if your registry is not Docker Hub
-      podman login
-      # podman login $REGISTRY_DOMAIN
-
-      # Push image
-      # Add '--tls-verify=false' after the command if TLS certificate is self-signed
-      podman push $IMAGE_REGISTRY_DOMAIN/$IMAGE_NAME:$IMAGE_VERSION
-      ```
 
 3. 修改部署檔
 
     - 修改 `./kubernetes-yamls/gke/spring-lab-application-ksa.yaml` 內容，將 Service Account 資訊修改為正確的資訊。
-    - 修改 `./kubernetes-yamls/gke/namespace.yaml` 內容，本 Lab 所使用的命名空間為 `monitoring-labs`
-    - 修改 `./kubernetes-yamls/gke/config-map-and-secret.yaml` 內容，將命名空間、資料庫連接埠、名稱、帳號、密碼寫上去
-    - 修改 `./kubernetes-yamls/gke/deployment.yaml`，將命名空間、映像檔名稱改對，並針對建出來的 Pod 加上 `instrumentation.opentelemetry.io/inject-java: "true"` 的 Annotation，如下所示
+    - 修改 `./kubernetes-yamls/gke/namespace.yaml` 內容，本 Lab 所使用的命名空間為 `observability`
+    - 修改 `./kubernetes-yamls/gke/config-map-and-secret.yaml` 內容，將命名空間、名稱、帳號、密碼寫上去
+
 
       ```yaml
       # deployment.yaml
@@ -382,7 +377,7 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
     1. 透過以下指令將命名空間建立起來
 
         ```shell
-        kubectl apply -f ./kubernetes-yamls/gke/namespace.yaml
+        kubectl create namespace observability
         ```
 
     2. 透過以下指令將 ConfigMap 與 Secrets 部署到 GKE 上
@@ -398,31 +393,13 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
         - 建立服務帳號
           > 此名稱可以更換為任意名稱，但請記得此名稱，後續取得金鑰檔案指令中會用到，範例所使用的服務帳號名稱為 `spring-lab-application-gsa`
         - 指定以下角色給此服務帳號
-          - Cloud SQL 編輯者
           - Workload Identity 使用者
 
-    4. 透過以下指令先將 Cloud SQL Auth Proxy 需要的 IAM 權限透過 Workload Identity 綁定到 Kubernetes Service Account 上
 
-        > 此指令執行過程中若出現問題，建議可以在最後加上 `--verbosity=debug` 檢視除錯的日誌
-
-        ```shell
-        # Export variables for command
-        PROJECT_ID=your_project_id
-        K8S_NAMESPACE_NAME=service_namespace_name
-        K8S_SERVICE_ACCOUNT_NAME=k8s_sa_name
-        GCP_SERVICE_ACCOUNT_NAME=gcp_sa_name
-
-        # Issue command
-        gcloud iam service-accounts add-iam-policy-binding \
-          --role roles/iam.workloadIdentityUser \
-          --member "serviceAccount:$PROJECT_ID.svc.id.goog[$K8S_NAMESPACE_NAME/$K8S_SERVICE_ACCOUNT_NAME]" \
-          $GCP_SERVICE_ACCOUNT_NAME@$PROJECT_ID.iam.gserviceaccount.com
-        ```
-
-    5. 透過以下指令將應用程式與 Service 部署到 GKE 上
+    4. 透過以下指令將應用程式與 Service 部署到 GKE 上
 
         ```shell
-        kubectl apply -f ./kubernetes-yamls/gke/deployment.yaml
+        kubectl apply -f ./kubernetes-yamls/gke/java-app.yaml
         ```
 
 ### 驗證結果
@@ -433,7 +410,7 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 
   應用程式部署後會有兩個執行的容器以及一個初始化的容器，其中初始化的容器只是針對應用程式寫入相關的環境變數，因此其執行過程並不會有任何的日誌被輸出。
 
-  主要要檢查應用程式啟動後有沒有輸出任何錯誤的日誌，以及 Cloud SQL Proxy 有沒有正常連線到 Cloud SQL。
+  主要要檢查應用程式啟動後有沒有輸出任何錯誤的日誌。
 
 - 檢查 Collector 容器是否有輸出任何錯誤日誌
 
@@ -453,156 +430,6 @@ gcloud projects add-iam-policy-binding projects/$PROJECT_ID \
 
 以上步驟如果都成功，表示整個部署是成功的。
 
-## 在地端自架 Kubernetes 中實作
-
-本節會說明如何在地端自架 Kubernetes 上實作，並將可觀測性資料輸出到 Prometheus 中。
-
-在地端的範例中，OpenTelemetry Java Agent 會透過 otlp 協定透過 gRPC 協定將遙測資料送到 Collector 上，Collector 將遙測資料執行指定的處理後，再透過 `/metric` 端點將遙測資料暴露出來，最後在讓 Prometheus 主動去指定的命名空間與端點撈取遙測資料。
-
-```mermaid
-flowchart LR
-  SBAPA -- "Send telemetry data" --> OCA
-  D["Prometheus"] -- "Collect telemetry data" --> OCB
-
-  subgraph Spring Boot Application Pod
-    direction LR
-    subgraph Application Container
-      direction LR
-        SBAPA["OpenTelemetry Java Agent"] -- "Collect telemetry data" --> SBAPB["Tomcat"]
-      end
-  end
-
-  subgraph OpenTelemetry Collector
-    direction LR
-    OCA["Receiver"] -- "Process and expose telemetry data" --> OCB["Prometheus Exporter<br>endpoint: /metric"]
-  end
-
-```
-
-### 安裝 Prometheus
-
-本範例透過 Bitnami 所提供的 [Helm Chart](https://github.com/bitnami/charts/tree/main/bitnami/prometheus) 進行 Prometheus 的安裝。
-> 請注意，該 Chart 預設的 Service 類型宣告為 Load Balancer，若沒有對外暴露服務的需求，或單純進行 PoC 使用，可以將該類型修改為 ClusterIP 即可
-
-```yaml
-# prometheus-server-service.yaml
-apiVersion: v1
-kind: Service
-...
-spec:
-  type: ClusterIP
-```
-
-### 設定 Prometheus 服務發現
-
-透過 Helm Chart 安裝後的設定檔會存放於 Kubernetes ConfigMap 中，可以透過修改該 ConfigMap 新增或移除服務發現的設定，本範例需要新增以下的服務發現設定:
-
-```yaml
-scrape_configs:
-  - job_name: sb-monitoring
-    kubernetes_sd_configs:
-      - role: endpoints
-        # 這邊設定這個 Job 要撈取遙測資料的命名空間名稱
-        namespaces:
-          names:
-          - monitoring-labs
-    # 指定 Prometheus 要撈取資料的端點名稱
-    metrics_path: /metrics
-```
-
-### 設定 OpenTelemetry Collector
-
-1. 修改 `./kubernetes-yamls/opentelemetry-operator/bare-metal-open-telemetry-collector.yaml` 檔內容
-
-    ```yaml
-    apiVersion: opentelemetry.io/v1alpha1
-    kind: OpenTelemetryCollector
-    metadata:
-      name: java-collector
-      namespace: otel-system
-    spec:
-      config: |
-        receivers:
-          otlp:
-            protocols:
-              grpc:
-                endpoint: 0.0.0.0:4317
-              http:
-                endpoint: 0.0.0.0:4318
-        processors:
-          memory_limiter:
-            check_interval: 1s
-            limit_percentage: 75
-            spike_limit_percentage: 15
-          batch:
-            send_batch_size: 10000
-            timeout: 10s
-
-        exporters:
-          # NOTE: Prior to v0.86.0 use `logging` instead of `debug`.
-          debug: {}
-          prometheus:
-            # 設定要輸出遙測資料的端點名稱
-            endpoint: /metrics
-            # 設定遙測資料 key 的前綴詞，所有的 `-` 會被轉換為 `_`
-            # 以下面名稱為例，在 Prometheus 上就會看到 monitoring_backends_process_runtime_jvm_cpu_utilization_ratio
-            namespace: monitoring-backends
-
-        service:
-          pipelines:
-            traces:
-              receivers: [otlp]
-              processors: [memory_limiter, batch]
-              exporters: [debug]
-            metrics:
-              receivers: [otlp]
-              processors: [memory_limiter, batch]
-              exporters: [debug, prometheus]
-            logs:
-              receivers: [otlp]
-              processors: [memory_limiter, batch]
-              exporters: [debug]
-    ```
-
-2. 透過以下指令部署 OpenTelemetry Collector
-
-    ```shell
-    kubectl apply -f ./kubernetes-yamls/opentelemetry-operator/bare-metal-open-telemetry-collector.yaml
-    ```
-
-3. 完成
-
-### 在地端 Kubernetes 上部署應用程式
-
-請直接參考[部署應用程式](#部署應用程式)的說明。
-
-### 驗證地端 Kubernetes 實驗結果
-
-部署後請依據以下步驟逐步檢查部署是否成功
-
-- 確認應用程式有正常啟動
-
-  應用程式部署後會有兩個執行的容器以及一個初始化的容器，其中初始化的容器只是針對應用程式寫入相關的環境變數，因此其執行過程並不會有任何的日誌被輸出。
-
-  主要要檢查應用程式啟動後有沒有輸出任何錯誤的日誌。
-
-- 檢查 Collector 容器是否有輸出任何錯誤日誌
-
-  應用程式啟動後約過 10 秒就會開始輸出指標，可以觀察在這過程中有沒有輸出類似 `Exporting failed. Dropping data` 字樣的錯誤日誌。
-
-  ![驗證結果3](./docs/assets/readme/07-verify-result-3.png)
-
-- 檢查 Prometheus 上是否有收到指標資料
-
-  將部署的 Prometheus 服務透過 Port 轉發來檢視是否有成功讓其撈到相關的指標資料
-
-  ![驗證結果1](./docs/assets/readme/05-verify-result-1.png)
-
-  也可以透過 Prometheus 上方選單點選 Status > Targets 去看有沒有撈到相對應的遙測資料
-
-  ![驗證結果2](./docs/assets/readme/06-verify-result-2.png)
-
-以上步驟如果都成功，表示整個部署是成功的。
 
 ## 參考資料
 
@@ -628,16 +455,6 @@ scrape_configs:
 - [Using the Collector Builder with Sample Configs on GCP - OpenTelemetry Blog](https://opentelemetry.io/blog/2022/collector-builder-sample/)
 - [Google Cloud Exporter - open-telemetry/opentelemetry-collector-contrib - GitHub](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/exporter/googlecloudexporter)
 - [Prometheus Exporter - open-telemetry/opentelemetry-collector-contrib - GitHub](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/exporter/prometheusexporter/README.md)
-
-### Prometheus 相關參考資料
-
-- [Bitnami package for Prometheus](https://github.com/bitnami/charts/tree/main/bitnami/prometheus/#installing-the-chart)
-- [<scrape_config> - Configuration - Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config)
-- [Can't use prometheusremotewrite in OpenTelemetry collector - r/OpenTelemetry - reddit](https://www.reddit.com/r/OpenTelemetry/comments/1efmocv/cant_use_prometheusremotewrite_in_opentelemetry/)
-- [OTLP Receiver - Feature flags - Prometheus](https://prometheus.io/docs/prometheus/latest/feature_flags/#otlp-receiver)
-- [Using Prometheus as your OpenTelemetry backend - Prometheus](https://prometheus.io/docs/guides/opentelemetry/)
-- [Monitoring with Prometheus](https://www.cloudraft.io/blog/monitoring-with-prometheus)
-- [Prometheus Pushgateways - Everything You Need To Know](https://www.metricfire.com/blog/prometheus-pushgateways-everything-you-need-to-know/)
 
 ### Spring Boot 相關參考資料
 

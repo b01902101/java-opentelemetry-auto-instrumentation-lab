@@ -17,7 +17,6 @@ spec:
       labels:
         app: spring-boot-monitoring-lab
     spec:
-      #TODO
       serviceAccountName: otel-collector-ksa
       volumes:
         - name: agent-volume
